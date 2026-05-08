@@ -332,7 +332,7 @@ CREATE OR REPLACE FUNCTION public.generate_ticket_number()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
     v_year    text;
@@ -394,7 +394,7 @@ RETURNS text
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, auth
 AS $$
     SELECT auth.jwt()->>'user_role';
 $$;
@@ -407,7 +407,7 @@ RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
     v_user_id   uuid;
@@ -613,7 +613,13 @@ CREATE POLICY "tickets_select_admin"
     ON public.tickets
     FOR SELECT
     TO authenticated
-    USING (public.get_jwt_role() IN ('admin', 'super_admin'));
+    USING (
+        public.get_jwt_role() IN ('admin', 'super_admin')
+        OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() AND role IN ('admin', 'super_admin')
+        )
+    );
 
 -- Only customers may open tickets; customer_id must match the caller
 CREATE POLICY "tickets_insert_customer"
@@ -621,7 +627,13 @@ CREATE POLICY "tickets_insert_customer"
     FOR INSERT
     TO authenticated
     WITH CHECK (
-        public.get_jwt_role() = 'customer'
+        (
+            public.get_jwt_role() = 'customer'
+            OR EXISTS (
+                SELECT 1 FROM public.profiles
+                WHERE id = auth.uid() AND role = 'customer'
+            )
+        )
         AND customer_id = auth.uid()
     );
 
@@ -654,15 +666,33 @@ CREATE POLICY "tickets_update_admin"
     ON public.tickets
     FOR UPDATE
     TO authenticated
-    USING      (public.get_jwt_role() IN ('admin', 'super_admin'))
-    WITH CHECK (public.get_jwt_role() IN ('admin', 'super_admin'));
+    USING (
+        public.get_jwt_role() IN ('admin', 'super_admin')
+        OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() AND role IN ('admin', 'super_admin')
+        )
+    )
+    WITH CHECK (
+        public.get_jwt_role() IN ('admin', 'super_admin')
+        OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() AND role IN ('admin', 'super_admin')
+        )
+    );
 
 -- Only admins may hard-delete tickets
 CREATE POLICY "tickets_delete_admin"
     ON public.tickets
     FOR DELETE
     TO authenticated
-    USING (public.get_jwt_role() IN ('admin', 'super_admin'));
+    USING (
+        public.get_jwt_role() IN ('admin', 'super_admin')
+        OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() AND role IN ('admin', 'super_admin')
+        )
+    );
 
 -- ---------------------------------------------------------------------------
 -- QUOTES

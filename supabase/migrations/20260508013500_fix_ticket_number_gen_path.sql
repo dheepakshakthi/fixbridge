@@ -1,7 +1,6 @@
--- Ensure pgcrypto is enabled for gen_random_bytes() and gen_random_uuid()
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+-- Update the ticket number generation function to include the extensions schema in its search path.
+-- This is necessary because gen_random_bytes() is provided by pgcrypto, which may be in the extensions schema.
 
--- Re-apply the trigger function just in case pgcrypto was missing during its creation
 CREATE OR REPLACE FUNCTION public.generate_ticket_number()
 RETURNS trigger
 LANGUAGE plpgsql

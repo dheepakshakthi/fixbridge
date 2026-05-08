@@ -74,38 +74,73 @@ export function useProviderProfile(providerId: string) {
   });
 }
 
+export function useMyProviderProfile() {
+  const supabase = createClient();
+
+  return useQuery({
+    queryKey: ["my-provider-profile"],
+    queryFn: async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      const { data, error } = await supabase
+        .from("service_providers")
+        .select("*")
+        .eq("profile_id", user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
 export function useProviderStats() {
   const supabase = createClient();
 
   return useQuery({
     queryKey: ["provider-stats"],
     queryFn: async () => {
-      const [newRequests, activeJobs, readyJobs, providerData] =
-        await Promise.all([
-          supabase
-            .from("tickets")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "submitted"),
-          supabase
-            .from("tickets")
-            .select("id", { count: "exact", head: true })
-            .in("status", ["accepted", "in_repair"]),
-          supabase
-            .from("tickets")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "ready"),
-          supabase
-            .from("service_providers")
-            .select("avg_rating, total_reviews")
-            .single<Pick<ServiceProvider, "avg_rating" | "total_reviews">>(),
-        ]);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      const { data: profile } = await supabase
+        .from("service_providers")
+        .select("id, avg_rating, total_reviews, device_categories")
+        .eq("profile_id", user.id)
+        .single();
+
+      if (!profile) return null;
+
+      const [newRequests, activeJobs, readyJobs] = await Promise.all([
+        supabase
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "submitted")
+          .or(`provider_id.is.null,provider_id.eq.${profile.id}`)
+          .in("device_type", profile.device_categories),
+        supabase
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["accepted", "in_repair", "quoted"])
+          .eq("provider_id", profile.id),
+        supabase
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "ready")
+          .eq("provider_id", profile.id),
+      ]);
 
       return {
         newRequests: newRequests.count ?? 0,
         activeJobs: activeJobs.count ?? 0,
         readyJobs: readyJobs.count ?? 0,
-        avgRating: providerData.data?.avg_rating ?? 0,
-        totalReviews: providerData.data?.total_reviews ?? 0,
+        avgRating: profile.avg_rating ?? 0,
+        totalReviews: profile.total_reviews ?? 0,
       };
     },
   });

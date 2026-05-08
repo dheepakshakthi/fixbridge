@@ -6,18 +6,28 @@ import { toast } from "sonner";
 import type { SubmitQuoteInput } from "@/schemas/quote";
 import type { TicketStatus, QuoteInsert, TicketUpdate } from "@/types";
 
-export function useNewRequests(deviceCategories?: string[]) {
+export function useNewRequests(
+  providerId?: string,
+  deviceCategories?: string[],
+) {
   const supabase = createClient();
 
   return useQuery({
-    queryKey: ["provider-new-requests", deviceCategories],
+    queryKey: ["provider-new-requests", providerId, deviceCategories],
     queryFn: async () => {
       let query = supabase
         .from("tickets")
         .select("*, profiles!customer_id(id, full_name)")
         .eq("status", "submitted")
-        .is("provider_id", null)
         .order("created_at", { ascending: false });
+
+      if (providerId) {
+        // Show tickets that are either broadcast (null) OR targeted at this provider
+        query = query.or(`provider_id.is.null,provider_id.eq.${providerId}`);
+      } else {
+        // If no providerId provided, only show broadcast
+        query = query.is("provider_id", null);
+      }
 
       if (deviceCategories?.length) {
         query = query.in("device_type", deviceCategories);

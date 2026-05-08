@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import {
   ClipboardList,
@@ -7,10 +9,23 @@ import {
   PlusCircle,
   TrendingUp,
   Users,
-  MessageSquare,
 } from "lucide-react";
+import { useProviderStats } from "@/hooks/useProviders";
+import { useNewRequests } from "@/hooks/useProviderJobs";
+import { useMyProviderProfile } from "@/hooks/useProviders";
+import { Skeleton } from "@/components/ui/LoadingSkeleton";
+import { formatDistanceToNow } from "date-fns";
 
 export default function ProviderDashboardPage() {
+  const { data: stats, isLoading: statsLoading } = useProviderStats();
+  const { data: profile } = useMyProviderProfile();
+  const { data: recentRequests, isLoading: requestsLoading } = useNewRequests(
+    profile?.id,
+    profile?.device_categories,
+  );
+
+  const isLoading = statsLoading || requestsLoading;
+
   return (
     <div className="space-y-8">
       <div>
@@ -25,29 +40,29 @@ export default function ProviderDashboardPage() {
         <StatCard
           icon={<AlertCircle className="w-6 h-6 text-blue-600" />}
           label="New Requests"
-          value="5"
-          trend="+2 since yesterday"
+          value={isLoading ? "..." : (stats?.newRequests ?? 0)}
+          trend="Action required"
           color="bg-blue-50"
         />
         <StatCard
           icon={<Clock className="w-6 h-6 text-orange-600" />}
-          label="In Repair"
-          value="12"
-          trend="3 due today"
+          label="Active Jobs"
+          value={isLoading ? "..." : (stats?.activeJobs ?? 0)}
+          trend="In progress"
           color="bg-orange-50"
         />
         <StatCard
           icon={<CheckCircle2 className="w-6 h-6 text-green-600" />}
-          label="Completed"
-          value="28"
-          trend="This month"
+          label="Ready/Pickup"
+          value={isLoading ? "..." : (stats?.readyJobs ?? 0)}
+          trend="Awaiting customer"
           color="bg-green-50"
         />
         <StatCard
           icon={<TrendingUp className="w-6 h-6 text-purple-600" />}
-          label="Revenue"
-          value="₹12.4k"
-          trend="+15% vs last month"
+          label="Avg Rating"
+          value={isLoading ? "..." : (stats?.avgRating?.toFixed(1) ?? "0.0")}
+          trend={`${stats?.totalReviews ?? 0} reviews`}
           color="bg-purple-50"
         />
       </div>
@@ -91,28 +106,35 @@ export default function ProviderDashboardPage() {
               View all
             </Link>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-            <RecentJobItem
-              device="iPhone 14 Pro"
-              issue="Cracked Screen"
-              customer="Aryan M."
-              date="2h ago"
-              status="New"
-            />
-            <RecentJobItem
-              device="Dell XPS 15"
-              issue="Battery Replacement"
-              customer="Priya S."
-              date="5h ago"
-              status="Quoted"
-            />
-            <RecentJobItem
-              device="PS5"
-              issue="HDMI Port Repair"
-              customer="Rahul K."
-              date="Yesterday"
-              status="New"
-            />
+          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 min-h-[200px]">
+            {isLoading ? (
+              [...Array(3)].map((_, i) => (
+                <div key={i} className="p-4 space-y-2">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              ))
+            ) : recentRequests && recentRequests.length > 0 ? (
+              recentRequests
+                .slice(0, 5)
+                .map((req) => (
+                  <RecentJobItem
+                    key={req.id}
+                    id={req.id}
+                    device={`${req.device_type} ${req.brand || ""}`}
+                    issue={req.issue_description}
+                    customer={req.profiles?.full_name || "Anonymous"}
+                    date={formatDistanceToNow(new Date(req.created_at), {
+                      addSuffix: true,
+                    })}
+                    status={req.provider_id ? "Direct" : "New"}
+                  />
+                ))
+            ) : (
+              <div className="p-8 text-center text-gray-500 text-sm">
+                No recent requests found.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -152,16 +174,21 @@ function ActionLink({ href, icon, title, description }: any) {
   );
 }
 
-function RecentJobItem({ device, issue, customer, date, status }: any) {
+function RecentJobItem({ id, device, issue, customer, date, status }: any) {
   return (
-    <div className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+    <Link
+      href={`/provider/jobs/new/${id}`}
+      className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+    >
       <div className="flex items-center gap-4">
-        <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500">
+        <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
           <ClipboardList className="w-5 h-5" />
         </div>
-        <div>
-          <h4 className="text-sm font-medium text-gray-900">{device}</h4>
-          <p className="text-xs text-gray-500">
+        <div className="max-w-[200px] sm:max-w-xs">
+          <h4 className="text-sm font-medium text-gray-900 truncate">
+            {device}
+          </h4>
+          <p className="text-xs text-gray-500 truncate">
             {issue} • {customer}
           </p>
         </div>
@@ -169,15 +196,15 @@ function RecentJobItem({ device, issue, customer, date, status }: any) {
       <div className="text-right">
         <span
           className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-            status === "New"
-              ? "bg-blue-100 text-blue-700"
-              : "bg-orange-100 text-orange-700"
+            status === "Direct"
+              ? "bg-indigo-100 text-indigo-700"
+              : "bg-blue-100 text-blue-700"
           }`}
         >
           {status}
         </span>
         <p className="text-[10px] text-gray-400 mt-1">{date}</p>
       </div>
-    </div>
+    </Link>
   );
 }
