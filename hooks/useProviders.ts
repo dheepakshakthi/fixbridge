@@ -116,13 +116,21 @@ export function useProviderStats() {
 
       if (!profile) return null;
 
+      let newRequestsQuery = supabase
+        .from("tickets")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "submitted")
+        .or(`provider_id.is.null,provider_id.eq.${profile.id}`);
+
+      if (profile.device_categories?.length) {
+        newRequestsQuery = newRequestsQuery.in(
+          "device_type",
+          profile.device_categories,
+        );
+      }
+
       const [newRequests, activeJobs, readyJobs] = await Promise.all([
-        supabase
-          .from("tickets")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "submitted")
-          .or(`provider_id.is.null,provider_id.eq.${profile.id}`)
-          .in("device_type", profile.device_categories),
+        newRequestsQuery,
         supabase
           .from("tickets")
           .select("id", { count: "exact", head: true })
