@@ -8,7 +8,7 @@ import type { TicketStatus, QuoteInsert, TicketUpdate } from "@/types";
 
 export function useNewRequests(
   providerId?: string,
-  deviceCategories?: string[],
+  deviceCategories?: string[] | null,
 ) {
   const supabase = createClient();
 
